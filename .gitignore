@@ -224,9 +224,6 @@ __marimo__/
 # Dynamically generated data tensors
 dataset/processed/
 
-# Artifact binaries and dynamic payloads
-artifacts/
-
 # Frontend build artifacts
 frontend/node_modules/
 frontend/.next/

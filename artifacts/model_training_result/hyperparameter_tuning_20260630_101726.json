@@ -1,0 +1,50 @@
+{
+  "best_parameters": {
+    "colsample_bytree": 0.9,
+    "learning_rate": 0.01,
+    "max_depth": 4,
+    "n_estimators": 50,
+    "subsample": 0.7
+  },
+  "best_score": -0.56875,
+  "scale_pos_weight": 2.3333333333333335,
+  "param_grid": {
+    "n_estimators": [
+      50,
+      100,
+      150
+    ],
+    "max_depth": [
+      3,
+      4,
+      5
+    ],
+    "learning_rate": [
+      0.01,
+      0.05,
+      0.1
+    ],
+    "subsample": [
+      0.7,
+      0.8,
+      0.9
+    ],
+    "colsample_bytree": [
+      0.7,
+      0.8,
+      0.9
+    ]
+  },
+  "cv_strategy": "Stratified 5-Fold",
+  "random_state": 42,
+  "training_evaluation_metrics": {
+    "accuracy": 0.7575,
+    "precision": 0.5595854922279793,
+    "recall": 0.9,
+    "f1_score": 0.6900958466453674,
+    "roc_auc": 0.8773921130952381,
+    "asymmetric_cost": 0.3625,
+    "threshold": 0.49,
+    "optimal_threshold": 0.49
+  }
+}
