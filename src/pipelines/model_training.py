@@ -7,16 +7,22 @@ to prevent data leakage, executes training and evaluation runs, and saves
 all final assets to the /artifacts/ ecosystem.
 """
 
+import json
 import logging
+from datetime import datetime
+from pathlib import Path
 from typing import Dict
 
 import numpy as np
 import pandas as pd
+from sklearn.metrics import make_scorer
+from sklearn.model_selection import GridSearchCV, StratifiedKFold
 
 from src.data.loader import GermanDataLoader
 from src.data.preprocessing import GermanCreditPreprocessor
 from src.data.scaling import GermanCreditFeatureScaler
 from src.model.evaluation import (
+    calculate_asymmetric_cost,
     evaluate_predictions,
     optimize_threshold,
     save_evaluation_results,
@@ -44,7 +50,7 @@ def run_training_pipeline(data_path: str = "dataset/raw/german.data") -> None:
         1. Load data and perform stratified train-test split
         2. Fit and transform preprocessor, save artifact
         3. Fit and transform feature scaler, save artifact
-        4. Train XGBoost model via trainer, save model
+        4. Hyperparameter tuning with GridSearchCV using asymmetric cost scorer
         5. Optimize decision threshold on training data
         6. Evaluate on test set with optimized threshold
         7. Save evaluation report and summary metadata
@@ -124,42 +130,150 @@ def run_training_pipeline(data_path: str = "dataset/raw/german.data") -> None:
         logger.info("Feature scaler artifact saved to artifacts/")
 
         # =====================================================================
-        # STEP 4: Train XGBoost model via trainer, save model
+        # STEP 4: Hyperparameter tuning with GridSearchCV
         # =====================================================================
         logger.info("\n" + "=" * 80)
-        logger.info("STEP 4: Training XGBoost model")
+        logger.info("STEP 4: Hyperparameter tuning with GridSearchCV")
         logger.info("=" * 80)
 
-        # Initialize model with hyperparameters
-        model = GermanCreditXGBClassifier(
-            n_estimators=100,
-            max_depth=6,
-            learning_rate=0.1,
-            scale_pos_weight=1.0,
+        # Calculate scale_pos_weight to handle class imbalance
+        # scale_pos_weight = count(majority_class_0) / count(minority_class_1)
+        count_class_0 = int((y_train == 0).sum())
+        count_class_1 = int((y_train == 1).sum())
+        scale_pos_weight = count_class_0 / count_class_1
+
+        logger.info(
+            f"Class distribution in training set: "
+            f"Class 0 (Good): {count_class_0}, Class 1 (Bad): {count_class_1}"
+        )
+        logger.info(f"Calculated scale_pos_weight: {scale_pos_weight:.4f}")
+
+        # Create custom asymmetric cost scorer (we want to MINIMIZE cost)
+        cost_scorer = make_scorer(
+            calculate_asymmetric_cost,
+            greater_is_better=False
+        )
+        logger.info("Custom asymmetric cost scorer created")
+
+        # Define hyperparameter grid for regularization
+        param_grid = {
+            "n_estimators": [50, 100, 150],
+            "max_depth": [3, 4, 5],
+            "learning_rate": [0.01, 0.05, 0.1],
+            "subsample": [0.7, 0.8, 0.9],
+            "colsample_bytree": [0.7, 0.8, 0.9],
+        }
+        logger.info(f"Hyperparameter grid: {param_grid}")
+
+        # Initialize base model
+        base_model = GermanCreditXGBClassifier(
+            scale_pos_weight=scale_pos_weight,
             random_state=random_state
         )
 
-        # Initialize trainer
-        trainer = GermanCreditTrainer(random_state=random_state)
-
-        # Prepare evaluation set for training monitoring
-        eval_set = [(X_train_scaled, y_train), (X_test_scaled, y_test)]
-
-        # Train model
-        model = trainer.train_model(
-            model=model,
-            X_train=X_train_scaled,
-            y_train=y_train,
-            eval_set=eval_set
+        # Set up Stratified 5-Fold Cross-Validation
+        stratified_kfold = StratifiedKFold(
+            n_splits=5,
+            shuffle=True,
+            random_state=random_state
         )
+        logger.info("Stratified 5-Fold Cross-Validation configured")
+
+        # Initialize GridSearchCV with custom scorer
+        grid_search = GridSearchCV(
+            estimator=base_model,
+            param_grid=param_grid,
+            scoring=cost_scorer,
+            cv=stratified_kfold,
+            n_jobs=-1,
+            verbose=1
+        )
+
+        # Fit GridSearchCV on training data
+        logger.info("Starting hyperparameter search...")
+        grid_search.fit(X_train_scaled, y_train)
+
+        # Extract best estimator and parameters
+        best_model = grid_search.best_estimator_
+        best_params = grid_search.best_params_
+        best_score = grid_search.best_score_
+
+        logger.info("=" * 80)
+        logger.info("HYPERPARAMETER SEARCH COMPLETED")
+        logger.info("=" * 80)
+        logger.info(f"Best parameters found: {best_params}")
+        logger.info(f"Best asymmetric cost score: {best_score:.4f}")
+
+        # Update the model with the best estimator
+        model = best_model
+
+        # Calculate training set evaluation metrics
+        logger.info("Calculating training set evaluation metrics on tuned model")
+        y_train_probs = model.predict_proba(X_train_scaled)[:, 1]
+        optimal_threshold = optimize_threshold(y_train, y_train_probs)
+        training_metrics = evaluate_predictions(
+            y_true=y_train,
+            y_probs=y_train_probs,
+            threshold=optimal_threshold
+        )
+
+        logger.info("Training set evaluation metrics:")
+        logger.info(f"  Accuracy: {training_metrics['accuracy']:.4f}")
+        logger.info(f"  Precision: {training_metrics['precision']:.4f}")
+        logger.info(f"  Recall: {training_metrics['recall']:.4f}")
+        logger.info(f"  F1-Score: {training_metrics['f1_score']:.4f}")
+        logger.info(f"  ROC-AUC: {training_metrics['roc_auc']:.4f}")
+        logger.info(f"  Asymmetric Cost: {training_metrics['asymmetric_cost']:.4f}")
+        logger.info(f"  Optimal Threshold: {optimal_threshold:.4f}")
+
+        # Save training evaluation metrics as standalone report
+        training_metrics_with_opt = dict(training_metrics)
+        training_metrics_with_opt["optimal_threshold"] = float(optimal_threshold)
+        save_evaluation_results(
+            metrics=training_metrics_with_opt,
+            output_dir="artifacts/training_evaluation_result",
+            prefix="training_evaluation_report"
+        )
+        logger.info("Training evaluation report saved to artifacts/training_evaluation_result/")
 
         # Save model artifact
         model.save_model("artifacts/xgboost_model.joblib")
         logger.info("Model artifact saved to artifacts/")
 
-        # Save training metadata
-        trainer.save_training_metadata("artifacts/model_training_result")
-        logger.info("Training metadata saved to artifacts/model_training_result/")
+        # Save hyperparameter tuning metadata with training metrics
+        tuning_metadata = {
+            "best_parameters": best_params,
+            "best_score": float(best_score),
+            "scale_pos_weight": float(scale_pos_weight),
+            "param_grid": param_grid,
+            "cv_strategy": "Stratified 5-Fold",
+            "random_state": random_state,
+            "training_evaluation_metrics": {
+                "accuracy": float(training_metrics["accuracy"]),
+                "precision": float(training_metrics["precision"]),
+                "recall": float(training_metrics["recall"]),
+                "f1_score": float(training_metrics["f1_score"]),
+                "roc_auc": float(training_metrics["roc_auc"]),
+                "asymmetric_cost": float(training_metrics["asymmetric_cost"]),
+                "threshold": float(training_metrics["threshold"]),
+                "optimal_threshold": float(optimal_threshold),
+            },
+        }
+
+        output_path = Path("artifacts/model_training_result")
+        output_path.mkdir(parents=True, exist_ok=True)
+        timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
+        tuning_file = output_path / f"hyperparameter_tuning_{timestamp}.json"
+
+        with open(tuning_file, "w", encoding="utf-8") as f:
+            json.dump(tuning_metadata, f, indent=2, ensure_ascii=False)
+        logger.info(f"Hyperparameter tuning metadata saved to {tuning_file}")
+
+        # Also save as text file
+        tuning_txt_file = output_path / f"hyperparameter_tuning_{timestamp}.txt"
+        with open(tuning_txt_file, "w", encoding="utf-8") as f:
+            json.dump(tuning_metadata, f, indent=2, ensure_ascii=False)
+        logger.info(f"Hyperparameter tuning metadata saved to {tuning_txt_file}")
 
         # =====================================================================
         # STEP 5: Optimize decision threshold on training data

@@ -225,6 +225,10 @@ __marimo__/
 dataset/processed/
 
 # Artifact binaries and dynamic payloads
-artifacts/*.joblib
-artifacts/evaluation_result/*.json
-artifacts/model_training_result/*.json
+artifacts/
+
+# Frontend build artifacts
+frontend/node_modules/
+frontend/.next/
+frontend/out/
+frontend/next-env.d.ts

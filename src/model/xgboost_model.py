@@ -85,6 +85,8 @@ class GermanCreditXGBClassifier(BaseEstimator, ClassifierMixin):
         max_depth: Maximum tree depth.
         learning_rate: Boosting learning rate.
         scale_pos_weight: Balance of positive and negative weights.
+        subsample: Subsample ratio of the training instances.
+        colsample_bytree: Subsample ratio of columns when constructing each tree.
         random_state: Random seed for reproducibility.
         model: Fitted XGBoost classifier instance.
 
@@ -93,6 +95,8 @@ class GermanCreditXGBClassifier(BaseEstimator, ClassifierMixin):
         max_depth: Maximum tree depth. Defaults to 6.
         learning_rate: Boosting learning rate (eta). Defaults to 0.1.
         scale_pos_weight: Balance of positive/negative weights. Defaults to 1.
+        subsample: Subsample ratio of the training instances. Defaults to 1.0.
+        colsample_bytree: Subsample ratio of columns when constructing each tree. Defaults to 1.0.
         random_state: Random seed for reproducibility. Defaults to 42.
     """
 
@@ -102,6 +106,8 @@ class GermanCreditXGBClassifier(BaseEstimator, ClassifierMixin):
         max_depth: int = 6,
         learning_rate: float = 0.1,
         scale_pos_weight: float = 1.0,
+        subsample: float = 1.0,
+        colsample_bytree: float = 1.0,
         random_state: int = 42
     ) -> None:
         """
@@ -112,12 +118,16 @@ class GermanCreditXGBClassifier(BaseEstimator, ClassifierMixin):
             max_depth: Maximum tree depth. Defaults to 6.
             learning_rate: Boosting learning rate (eta). Defaults to 0.1.
             scale_pos_weight: Balance of positive/negative weights. Defaults to 1.
+            subsample: Subsample ratio of the training instances. Defaults to 1.0.
+            colsample_bytree: Subsample ratio of columns when constructing each tree. Defaults to 1.0.
             random_state: Random seed for reproducibility. Defaults to 42.
         """
         self.n_estimators = n_estimators
         self.max_depth = max_depth
         self.learning_rate = learning_rate
         self.scale_pos_weight = scale_pos_weight
+        self.subsample = subsample
+        self.colsample_bytree = colsample_bytree
         self.random_state = random_state
         self.model: Optional[xgb.XGBClassifier] = None
 
@@ -179,6 +189,8 @@ class GermanCreditXGBClassifier(BaseEstimator, ClassifierMixin):
             max_depth=self.max_depth,
             learning_rate=self.learning_rate,
             scale_pos_weight=self.scale_pos_weight,
+            subsample=self.subsample,
+            colsample_bytree=self.colsample_bytree,
             objective="binary:logistic",
             eval_metric="logloss",
             random_state=self.random_state,

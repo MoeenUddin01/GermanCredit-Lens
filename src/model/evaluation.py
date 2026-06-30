@@ -286,19 +286,22 @@ def optimize_threshold(
 
 def save_evaluation_results(
     metrics: Dict[str, float],
-    output_dir: str = "artifacts/evaluation_result"
+    output_dir: str = "artifacts/evaluation_result",
+    prefix: str = "test_evaluation_report"
 ) -> None:
     """
-    Save evaluation metrics to a JSON file in the artifacts directory.
+    Save evaluation metrics to JSON and text files in the artifacts directory.
 
     This function ensures the output directory exists and saves the metrics
-    dictionary to a timestamped JSON file named test_evaluation_report.json
-    for persistent tracking of model performance.
+    dictionary to timestamped JSON and text files for persistent tracking of
+    model performance.
 
     Args:
         metrics: Dictionary containing evaluation metrics to save.
         output_dir: Directory path where the evaluation report should be saved.
             Defaults to "artifacts/evaluation_result".
+        prefix: Filename prefix for the saved report.
+            Defaults to "test_evaluation_report".
 
     Raises:
         IOError: If the file cannot be written due to filesystem permissions.
@@ -320,7 +323,6 @@ def save_evaluation_results(
 
         # Generate output file path with timestamp
         timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
-        output_file = output_path / f"test_evaluation_report_{timestamp}.json"
 
         # Add timestamp to metrics for tracking
         metrics_with_timestamp = metrics.copy()
@@ -328,10 +330,16 @@ def save_evaluation_results(
         metrics_with_timestamp["evaluation_date"] = datetime.now().isoformat()
 
         # Save metrics to JSON file
-        with open(output_file, "w", encoding="utf-8") as f:
+        json_file = output_path / f"{prefix}_{timestamp}.json"
+        with open(json_file, "w", encoding="utf-8") as f:
             json.dump(metrics_with_timestamp, f, indent=2, ensure_ascii=False)
+        logger.info(f"Successfully saved evaluation results to {json_file}")
 
-        logger.info(f"Successfully saved evaluation results to {output_file}")
+        # Save metrics to text file
+        txt_file = output_path / f"{prefix}_{timestamp}.txt"
+        with open(txt_file, "w", encoding="utf-8") as f:
+            json.dump(metrics_with_timestamp, f, indent=2, ensure_ascii=False)
+        logger.info(f"Successfully saved evaluation results to {txt_file}")
 
     except Exception as e:
         error_msg = f"Failed to save evaluation results to {output_dir}: {e}"

@@ -15,6 +15,7 @@ from typing import Any, Dict, List, Optional, Tuple
 
 import numpy as np
 
+from src.model.evaluation import evaluate_predictions, optimize_threshold
 from src.model.xgboost_model import GermanCreditXGBClassifier
 
 # Configure logging
@@ -184,6 +185,37 @@ class GermanCreditTrainer:
                         "n_rounds": len(metric_values),
                     }
 
+        # Calculate training set evaluation metrics
+        logger.info("Calculating training set evaluation metrics")
+        y_train_probs = model.predict_proba(X_train)[:, 1]
+        optimal_threshold = optimize_threshold(y_train, y_train_probs)
+        training_metrics = evaluate_predictions(
+            y_true=y_train,
+            y_probs=y_train_probs,
+            threshold=optimal_threshold
+        )
+
+        # Add evaluation metrics to training metadata
+        self.training_metadata["training_evaluation_metrics"] = {
+            "accuracy": float(training_metrics["accuracy"]),
+            "precision": float(training_metrics["precision"]),
+            "recall": float(training_metrics["recall"]),
+            "f1_score": float(training_metrics["f1_score"]),
+            "roc_auc": float(training_metrics["roc_auc"]),
+            "asymmetric_cost": float(training_metrics["asymmetric_cost"]),
+            "threshold": float(training_metrics["threshold"]),
+            "optimal_threshold": float(optimal_threshold),
+        }
+
+        logger.info("Training set evaluation metrics:")
+        logger.info(f"  Accuracy: {training_metrics['accuracy']:.4f}")
+        logger.info(f"  Precision: {training_metrics['precision']:.4f}")
+        logger.info(f"  Recall: {training_metrics['recall']:.4f}")
+        logger.info(f"  F1-Score: {training_metrics['f1_score']:.4f}")
+        logger.info(f"  ROC-AUC: {training_metrics['roc_auc']:.4f}")
+        logger.info(f"  Asymmetric Cost: {training_metrics['asymmetric_cost']:.4f}")
+        logger.info(f"  Optimal Threshold: {optimal_threshold:.4f}")
+
         return model
 
     def save_training_metadata(
@@ -191,11 +223,11 @@ class GermanCreditTrainer:
         output_dir: str = "artifacts/model_training_result"
     ) -> None:
         """
-        Save training metadata to a JSON file in the artifacts directory.
+        Save training metadata to JSON and text files in the artifacts directory.
 
         This method creates the target folder if missing and serializes
         parameters, training runtime details, and training/validation metric
-        histories into a file named model_training_report.json.
+        histories into timestamped JSON and text files named model_training_report.
 
         Args:
             output_dir: Directory path where the training report should be saved.
@@ -224,7 +256,6 @@ class GermanCreditTrainer:
 
             # Generate output file path with timestamp
             timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
-            output_file = output_path / f"model_training_report_{timestamp}.json"
 
             # Add save timestamp to metadata
             metadata_to_save = self.training_metadata.copy()
@@ -232,10 +263,16 @@ class GermanCreditTrainer:
             metadata_to_save["save_date"] = datetime.now().isoformat()
 
             # Save metadata to JSON file
-            with open(output_file, "w", encoding="utf-8") as f:
+            json_file = output_path / f"model_training_report_{timestamp}.json"
+            with open(json_file, "w", encoding="utf-8") as f:
                 json.dump(metadata_to_save, f, indent=2, ensure_ascii=False)
+            logger.info(f"Successfully saved training metadata to {json_file}")
 
-            logger.info(f"Successfully saved training metadata to {output_file}")
+            # Save metadata to text file
+            txt_file = output_path / f"model_training_report_{timestamp}.txt"
+            with open(txt_file, "w", encoding="utf-8") as f:
+                json.dump(metadata_to_save, f, indent=2, ensure_ascii=False)
+            logger.info(f"Successfully saved training metadata to {txt_file}")
 
         except Exception as e:
             error_msg = f"Failed to save training metadata to {output_dir}: {e}"
