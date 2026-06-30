@@ -216,3 +216,15 @@ __marimo__/
 
 # Streamlit
 .streamlit/secrets.toml
+
+# GermanCredit-Lens specific
+# Virtual environments
+.uv/
+
+# Dynamically generated data tensors
+dataset/processed/
+
+# Artifact binaries and dynamic payloads
+artifacts/*.joblib
+artifacts/evaluation_result/*.json
+artifacts/model_training_result/*.json
